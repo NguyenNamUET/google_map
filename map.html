@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add Map</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=default"></script>
+
+    <link rel="stylesheet" type="text/css" href="./style.css" />
+    <script type="module" src="./index.js"></script>
+</head>
+<body>
+<h3>Demo</h3>
+<label for="geoData">GEO Data:</label>
+<textarea id="geoData" name="geoData" rows="4" cols="50"></textarea>
+<button type="button" onclick="drawRouteValhalla()">Draw Route Using Valhalla</button>
+<!--<button type="button" onclick="drawRouteGoogleMap()">Draw Route Using Google Map API</button>-->
+<div id="map"></div>
+
+<script type="text/javascript" src="https://code.jquery.com/jquery-1.7.1.min.js"></script>
+<script async
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAKXdNUEAi_JgxJSXOBKg_Xqy6fJUBjUSw&v=weekly"
+        defer
+></script>
+<!--AIzaSyAKXdNUEAi_JgxJSXOBKg_Xqy6fJUBjUSw-->
+<!--AIzaSyDC4lRXp8WvphHA76VX90sAcPyFFvfKM6Q-->
+</body>
+</html>
+
+<style>
+    #map {
+        height: 800px;
+        width: 100%;
+    }
+</style>
+
+<script>
+    function drawRouteGoogleMap(){
+        let geoData = JSON.parse($("#geoData").val());
+        let geoCoordinates = geoData["features"][0]["geometry"]["coordinates"];
+        let requestUrl = "https://roads.googleapis.com/v1/snapToRoads?path="
+        let requestMetadata = "&interpolate=true&key=AIzaSyDC4lRXp8WvphHA76VX90sAcPyFFvfKM6Q"
+        let requestCoordinates = []
+        for(let i=0; i<Math.min(100, geoCoordinates.length); i++){
+            requestCoordinates.push(String(geoCoordinates[i][1].toFixed(6))+","+String(geoCoordinates[i][0].toFixed(6)))
+        }
+        console.log("url", requestUrl+requestCoordinates.join("|")+requestMetadata)
+        $.ajax({
+            url: requestUrl+requestCoordinates.join("|")+requestMetadata,
+            type: "GET",
+            dataType: "json",
+            contentType: "text/plain"
+        }).done(function (response) {
+            let coordinates = response["snappedPoints"]
+            console.log("coordinates", coordinates)
+            let routeCoordinates = []
+            for(let i=0; i<coordinates.length; i++){
+                routeCoordinates.push([parseFloat(coordinates[i]["location"]["latitude"]), parseFloat(coordinates[i]["location"]["longitude"])])
+            }
+            console.log("routeCoordinates 2", routeCoordinates)
+            drawMap(routeCoordinates)
+        });
+    }
+    function drawRouteValhalla(){
+        let geoData = JSON.parse($("#geoData").val());
+        let geoCoordinates = geoData["features"][0]["geometry"]["coordinates"];
+        let meili_request_body = {"shape": [], "costing": "auto", "format": "osrm", "trace_options":{"search_radius": 90}, "shape_match": "map_snap"}
+        for(let i=0; i<geoCoordinates.length; i++){
+            meili_request_body["shape"].push({lon: geoCoordinates[i][0], lat: geoCoordinates[i][1]})
+        }
+        console.log("meili_request_body", meili_request_body)
+        // $.ajax({
+        //     url: "http://localhost:8002/trace_attributes",
+        //     type: "POST",
+        //     dataType: "json",
+        //     contentType: "text/plain",
+        //     data: JSON.stringify(meili_request_body)
+        // }).done(function (route) {
+        //     let coordinates = decode_polyline(route["shape"], 6)
+        //     drawMap(coordinates)
+        // });
+
+        $.ajax({
+            url: "http://localhost:8002/trace_route",
+            type: "POST",
+            dataType: "json",
+            contentType: "text/plain",
+            data: JSON.stringify(meili_request_body)
+        }).done(function (route) {
+            console.log("route", route)
+            let routeCoordinates = []
+            for(let i=0; i<route["tracepoints"].length; i++){
+                if (route["tracepoints"][i] !== null){
+                    routeCoordinates.push([route["tracepoints"][i]["location"][1], route["tracepoints"][i]["location"][0]])
+                }
+            }
+            console.log("routeCoordinates", routeCoordinates)
+            drawMap(routeCoordinates)
+        });
+    }
+    function decode_polyline(str, precision) {
+        var index = 0,
+            lat = 0,
+            lng = 0,
+            coordinates = [],
+            shift = 0,
+            result = 0,
+            byte = null,
+            latitude_change,
+            longitude_change,
+            factor = Math.pow(10, precision || 6);
+
+        // Coordinates have variable length when encoded, so just keep
+        // track of whether we've hit the end of the string. In each
+        // loop iteration, a single coordinate is decoded.
+        while (index < str.length) {
+
+            // Reset shift, result, and byte
+            byte = null;
+            shift = 0;
+            result = 0;
+
+            do {
+                byte = str.charCodeAt(index++) - 63;
+                result |= (byte & 0x1f) << shift;
+                shift += 5;
+            } while (byte >= 0x20);
+
+            latitude_change = ((result & 1) ? ~(result >> 1) : (result >> 1));
+
+            shift = result = 0;
+
+            do {
+                byte = str.charCodeAt(index++) - 63;
+                result |= (byte & 0x1f) << shift;
+                shift += 5;
+            } while (byte >= 0x20);
+
+            longitude_change = ((result & 1) ? ~(result >> 1) : (result >> 1));
+
+            lat += latitude_change;
+            lng += longitude_change;
+
+            coordinates.push([lat / factor, lng / factor]);
+        }
+        return coordinates;
+    }
+    function drawMap(coordinates){
+        const coordinatesLength = coordinates.length
+        const start = { lat: coordinates[0][0], lng: coordinates[0][1] }
+        const destination = { lat: coordinates[coordinatesLength-1][0], lng: coordinates[coordinatesLength-1][1] }
+        console.log("start", start)
+        console.log("destination", destination)
+        const map = new google.maps.Map(document.getElementById("map"), {
+            zoom: 15,
+            center: start,
+        });
+        const startMarker = new google.maps.Marker({
+            position: start,
+            title: "START HERE",
+            map: map
+        });
+        const destinationMarker = new google.maps.Marker({
+            position: destination,
+            title: "DESTINATION HERE",
+            map: map
+        });
+        let coordinatesPath = []
+        for(let i=0; i<=coordinatesLength-1; i++){
+            coordinatesPath.push({lat: coordinates[i][0], lng: coordinates[i][1]})
+        }
+        const path = new google.maps.Polyline({
+            path: coordinatesPath,
+            geodesic: true,
+            strokeColor: "#FF0000",
+            strokeOpacity: 1.0,
+            strokeWeight: 2,
+        });
+        path.setMap(map);
+        // const directionsService = new google.maps.DirectionsService;
+        // const directionsDisplay = new google.maps.DirectionsRenderer({
+        //         map: map
+        // });
+        // // Turn off default markers of Directions API
+        // directionsDisplay.setOptions({
+        //     suppressMarkers: true
+        // })
+
+        // calculateAndDisplayRoute(directionsService, directionsDisplay, start, destination);
+    }
+    // function calculateAndDisplayRoute(directionsService, directionsDisplay, pointA, pointB) {
+    //     directionsService.route({
+    //         origin: pointA,
+    //         destination: pointB,
+    //         avoidTolls: true,
+    //         avoidHighways: false,
+    //         travelMode: google.maps.TravelMode.DRIVING
+    //     }, function (response, status) {
+    //         if (status === google.maps.DirectionsStatus.OK) {
+    //             directionsDisplay.setDirections(response);
+    //         } else {
+    //             window.alert('Directions request failed due to ' + status);
+    //         }
+    //     });
+    // }
+</script>
