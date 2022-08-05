@@ -63,38 +63,42 @@
         let geoData = JSON.parse($("#geoData").val());
         let geoCoordinates = geoData["features"][0]["geometry"]["coordinates"];
         let meili_request_body = {"shape": [], "costing": "auto", "format": "osrm", "trace_options":{"search_radius": 90}, "shape_match": "map_snap"}
+        // let meili_request_body = {"locations": [], "costing": "auto","units":"miles"}
         for(let i=0; i<geoCoordinates.length; i++){
             meili_request_body["shape"].push({lon: geoCoordinates[i][0], lat: geoCoordinates[i][1]})
         }
         console.log("meili_request_body", meili_request_body)
-        // $.ajax({
-        //     url: "http://localhost:8002/trace_attributes",
-        //     type: "POST",
-        //     dataType: "json",
-        //     contentType: "text/plain",
-        //     data: JSON.stringify(meili_request_body)
-        // }).done(function (route) {
-        //     let coordinates = decode_polyline(route["shape"], 6)
-        //     drawMap(coordinates)
-        // });
-
         $.ajax({
-            url: "http://localhost:8002/trace_route",
+            url: "http://10.116.227.161:8002/trace_attributes",
             type: "POST",
             dataType: "json",
             contentType: "text/plain",
             data: JSON.stringify(meili_request_body)
         }).done(function (route) {
-            console.log("route", route)
-            let routeCoordinates = []
-            for(let i=0; i<route["tracepoints"].length; i++){
-                if (route["tracepoints"][i] !== null){
-                    routeCoordinates.push([route["tracepoints"][i]["location"][1], route["tracepoints"][i]["location"][0]])
-                }
-            }
-            console.log("routeCoordinates", routeCoordinates)
-            drawMap(routeCoordinates)
+            console.log('route', route)
+            let coordinates = decode_polyline(route["shape"], 6)
+            drawMap(coordinates)
         });
+
+        // $.ajax({
+        //     url: "http://localhost:8002/route",
+        //     type: "POST",
+        //     dataType: "json",
+        //     contentType: "text/plain",
+        //     data: JSON.stringify(meili_request_body)
+        // }).done(function (route) {
+        //     console.log("route", route)
+        //     let routeCoordinates = []
+        //     let tracePoints = decode_polyline(route["trip"]["legs"][0]["shape"], 6)
+        //     console.log("tracePoints", tracePoints)
+        //     for(let i=0; i<tracePoints.length; i++){
+        //         if (tracePoints[i] !== null){
+        //             routeCoordinates.push([tracePoints[i][0], tracePoints[i][1]])
+        //         }
+        //     }
+        //     console.log("routeCoordinates", routeCoordinates)
+        //     drawMap(routeCoordinates)
+        // });
     }
     function decode_polyline(str, precision) {
         var index = 0,

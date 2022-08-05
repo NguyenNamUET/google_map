@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Display a map on a webpage</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.9.2/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.9.2/mapbox-gl.js"></script>
+    <script type="text/javascript" src="https://code.jquery.com/jquery-1.7.1.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 800px; width: 100%;}
+    </style>
+</head>
+<body>
+    <div>
+        <h3>Demo</h3>
+        <label for="geoData">GEO Data:</label>
+        <textarea id="geoData" name="geoData" rows="4" cols="50"></textarea>
+        <button type="button" onclick="drawRouteValhalla()">Draw Route Using Valhalla</button>
+    </div>
+    <div id="map"></div>
+<script>
+    mapboxgl.accessToken = 'pk.eyJ1Ijoibmd1eWVubmFtdHNkdiIsImEiOiJjbDZlemxrenQwMHQ0M2JzN2dibnltZ2RvIn0.pn88zxfZE-fWgpkgHZWrpQ';
+
+    function decode_polyline(str, precision) {
+        var index = 0,
+            lat = 0,
+            lng = 0,
+            coordinates = [],
+            shift = 0,
+            result = 0,
+            byte = null,
+            latitude_change,
+            longitude_change,
+            factor = Math.pow(10, precision || 6);
+
+        // Coordinates have variable length when encoded, so just keep
+        // track of whether we've hit the end of the string. In each
+        // loop iteration, a single coordinate is decoded.
+        while (index < str.length) {
+
+            // Reset shift, result, and byte
+            byte = null;
+            shift = 0;
+            result = 0;
+
+            do {
+                byte = str.charCodeAt(index++) - 63;
+                result |= (byte & 0x1f) << shift;
+                shift += 5;
+            } while (byte >= 0x20);
+
+            latitude_change = ((result & 1) ? ~(result >> 1) : (result >> 1));
+
+            shift = result = 0;
+
+            do {
+                byte = str.charCodeAt(index++) - 63;
+                result |= (byte & 0x1f) << shift;
+                shift += 5;
+            } while (byte >= 0x20);
+
+            longitude_change = ((result & 1) ? ~(result >> 1) : (result >> 1));
+
+            lat += latitude_change;
+            lng += longitude_change;
+
+            coordinates.push([lng / factor, lat / factor]);
+        }
+        return coordinates;
+    }
+
+    function drawRouteValhalla(){
+        let geoData = JSON.parse($("#geoData").val());
+        let meili_request_body = {"shape": [], "costing": "auto", "format": "osrm", "trace_options":{"search_radius": 90}, "shape_match": "map_snap"}
+        for(let i=0; i<geoData.length; i++){
+            meili_request_body["shape"].push({lon: geoData[i][1], lat: geoData[i][0]})
+        }
+        console.log("meili_request_body", meili_request_body)
+        $.ajax({
+            url: "http://10.116.227.161:8002/trace_attributes",
+            type: "POST",
+            dataType: "json",
+            contentType: "text/plain",
+            data: JSON.stringify(meili_request_body)
+        }).done(function (route) {
+            console.log('route', route)
+            let coordinates = decode_polyline(route["shape"], 6)
+            console.log("coordinates", coordinates)
+            drawMap(coordinates)
+        });
+    }
+
+    function drawMap(coordinates){
+        console.log(coordinates.slice(1, 10))
+        const map = new mapboxgl.Map({
+            container: 'map', // container ID
+            style: 'mapbox://styles/mapbox/streets-v11', // style URL
+            center: coordinates[0], // starting position [lng, lat]
+            zoom: 15, // starting zoom
+        });
+        map.on('load', () => {
+            map.addSource('route', {
+                'type': 'geojson',
+                'data': {
+                    'type': 'Feature',
+                    'properties': {},
+                    'geometry': {
+                        'type': 'LineString',
+                        'coordinates': coordinates
+                    }
+                }
+            });
+            map.addLayer({
+                'id': 'route',
+                'type': 'line',
+                'source': 'route',
+                'layout': {
+                    'line-join': 'round',
+                    'line-cap': 'round'
+                },
+                'paint': {
+                    'line-color': '#888',
+                    'line-width': 8
+                }
+            });
+        });
+    }
+
+</script>
+
+</body>
+</html>
